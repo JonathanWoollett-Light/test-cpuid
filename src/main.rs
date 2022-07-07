@@ -1,27 +1,19 @@
 #![feature(stdsimd)]
-#![allow(non_upper_case_globals, dead_code)]
+#![allow(non_upper_case_globals, dead_code, unused_imports)]
 use bitflags::bitflags;
 use core::arch::x86_64::{__cpuid, __get_cpuid_max, has_cpuid, CpuidResult};
-use std::{fmt, mem::transmute, str};
+use std::{
+    fmt,
+    fs::File,
+    io::Write,
+    mem::{size_of, transmute},
+    str,
+};
 
-#[derive(Default, Debug)]
-struct FeaturesSet {
-    manufacturer_id: String,
-    features: (Eax1EcxFlags, Eax1EdxFlags),
-    extended_features: (Eax7EbxFlags, Eax7EcxFlags, Eax7EdxFlags),
-}
-// impl fmt::Debug for FeaturesSet {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         f.debug_struct("FeaturesSet")
-//          .field("features: {:?}", self.features)
-//          .field("extended_features: {:?}", self.extended_features)
-//          .finish()
-//     }
-// }
 #[rustfmt::skip]
 bitflags! {
     /// Feature Information
-    #[derive(Default)]
+    #[repr(C)]
     struct Eax1EcxFlags: u32 {
         const sse3 =        1 << 0;
         const pclmulqdq =   1 << 1;
@@ -57,7 +49,7 @@ bitflags! {
         const hypervisor =  1 << 31;
     }
     /// Feature Information
-    #[derive(Default)]
+    #[repr(C)]
     struct Eax1EdxFlags: u32 {
         const fpu =         1 << 0;
         const vme =         1 << 1;
@@ -93,6 +85,7 @@ bitflags! {
         const pbe =         1 << 31;
     }
     /// Thermal and power management
+    #[repr(C)]
     struct Eax6EaxFlags: u32 {
         const digital_thermal_sensor_capability =           1 << 0;
         const intel_turbo_boost_technology_capability =     1 << 1;
@@ -104,6 +97,7 @@ bitflags! {
         // 7th to 31st bits reserved
     }
     /// Thermal and power management
+    #[repr(C)]
     struct Eax6EcxFlags: u32 {
         const hardware_coordination_feedback_capability =   1 << 0;
         const acnt2_capability =                            1 << 1;
@@ -112,7 +106,7 @@ bitflags! {
         // 4th to 31st bits reserved
     }
     /// Extended Features
-    #[derive(Default)]
+    #[repr(C)]
     struct Eax7EbxFlags: u32 {
         const fsgsbase =                        1 << 0;
         // No short name
@@ -151,7 +145,7 @@ bitflags! {
         const avx512_vl =                       1 << 31;
     }
     /// Extended Features
-    #[derive(Default)]
+    #[repr(C)]
     struct Eax7EcxFlags: u32 {
         const prefetchwt1 =         1 << 0;
         const avx512_vbmi =         1 << 1;
@@ -183,7 +177,7 @@ bitflags! {
         const pks =                 1 << 31;
     }
     /// Extended Features
-    #[derive(Default)]
+    #[repr(C)]
     struct Eax7EdxFlags: u32 {
         // 1st bit reserved
         // 2nd bit reserved
@@ -219,10 +213,10 @@ bitflags! {
         const ssbd = 1 << 31;
     }
 }
-#[derive(Debug)]
+#[repr(C)]
 struct Cpuid {
     /// eax 0
-    manufacturer_id: String,
+    manufacturer_id: [u8; 12],
     /// eax 1
     process_info_and_feature_bits: ProcessorInfoAndFeatureBits,
     /// eax 6
@@ -247,9 +241,10 @@ impl Cpuid {
                         transmute::<_, [u8; 4]>(ecx),
                     )
                 };
-                let slice = [ebx_bytes, edx_bytes, ecx_bytes].concat();
-                let manufacturer_id = str::from_utf8(&slice).unwrap();
-                String::from(manufacturer_id)
+                [ebx_bytes, edx_bytes, ecx_bytes]
+                    .concat()
+                    .try_into()
+                    .unwrap()
             },
             process_info_and_feature_bits: {
                 let CpuidResult { eax, ebx, ecx, edx } = unsafe { __cpuid(1) };
@@ -292,18 +287,34 @@ impl Cpuid {
             },
         }
     }
-    // pub fn contains(&self,other:&Self) -> bool {
-
-    // }
 }
-
+impl fmt::Debug for Cpuid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Cpuid")
+            .field(
+                "manufacturer_id",
+                &str::from_utf8(&self.manufacturer_id).unwrap(),
+            )
+            .field(
+                "process_info_and_feature_bits",
+                &self.process_info_and_feature_bits,
+            )
+            .field(
+                "thermal_and_power_management",
+                &self.thermal_and_power_management,
+            )
+            .field("extended_features", &self.extended_features)
+            .finish()
+    }
+}
 #[derive(Debug)]
+#[repr(C)]
 struct ProcessorInfoAndFeatureBits {
     processor_version_information: ProcessorVersionInformation,
     additional_information: AdditionalInformation,
     feature_information: FeatureInformation,
 }
-
+#[repr(C)]
 struct ProcessorVersionInformation(u32);
 impl ProcessorVersionInformation {
     fn stepping_id(&self) -> u8 {
@@ -338,15 +349,15 @@ impl fmt::Debug for ProcessorVersionInformation {
     }
 }
 
-#[repr(C)]
 #[derive(Debug)]
+#[repr(C)]
 struct AdditionalInformation {
     brand_index: u8,
     clflush_line_size: u8,
     maximum_addressable_logical_processor_ids: u8,
     local_apic_id: u8,
 }
-
+#[repr(C)]
 struct FeatureInformation {
     ecx: Eax1EcxFlags,
     edx: Eax1EdxFlags,
@@ -361,12 +372,13 @@ impl fmt::Debug for FeatureInformation {
         }
     }
 }
-
 #[derive(Debug)]
+#[repr(C)]
 struct ThermalAndPowerManagement {
     features: ThermalAndPowerManagementFeatures,
     number_of_interrupt_thresholds: Eax6EbxFlags,
 }
+#[repr(C)]
 struct ThermalAndPowerManagementFeatures {
     eax: Eax6EaxFlags,
     ecx: Eax6EcxFlags,
@@ -381,6 +393,7 @@ impl fmt::Debug for ThermalAndPowerManagementFeatures {
         }
     }
 }
+#[repr(C)]
 struct Eax6EbxFlags(u32);
 impl Eax6EbxFlags {
     fn number_of_interrupt_thresholds(&self) -> u8 {
@@ -392,6 +405,7 @@ impl fmt::Debug for Eax6EbxFlags {
         write!(f, "{}", self.number_of_interrupt_thresholds())
     }
 }
+#[repr(C)]
 struct ExtendedFeatures {
     ebx: Eax7EbxFlags,
     ecx: Eax7EcxFlags,
@@ -417,15 +431,22 @@ impl fmt::Debug for ExtendedFeatures {
 }
 
 fn main() {
-    // assert!(has_cpuid());
-    // let (max_eax, _max_ecx) = unsafe { __get_cpuid_max(0) };
-    // assert!(max_eax >= 7);
-
+    // We load cpuid
     let cpuid = Cpuid::new();
     println!("cpuid: {:#?}", cpuid);
+    // We transmute/reinterpret-cast it to an array of bytes
+    let bytes = unsafe { transmute::<_, [u8; size_of::<Cpuid>()]>(cpuid) };
+    println!("bytes: {:?}", bytes);
+    // We store these bytes in a binary file
+    let mut file = File::create("cpuid-x86_64").unwrap();
+    file.write_all(&bytes).unwrap();
 
-    // let a = Eax6EaxFlags { bits: 0b00000000_00000000_00000000_00001111 };
-    // let b = Eax6EaxFlags { bits: 0b00000000_00000000_00000000_00110001 };
-    // println!("a < b: {}",a<b);
-    // println!("a > b: {}",a>b);
+    // We can then define a constant based off these bytes
+    const cpuid_bytes: &'static [u8; size_of::<Cpuid>()] = include_bytes!("../cpuid-x86_64");
+    println!("cpuid_bytes: {:?}", cpuid_bytes);
+    assert_eq!(size_of::<Cpuid>(), cpuid_bytes.len());
+    const cpuid_from_bytes: Cpuid =
+        unsafe { transmute::<[u8; size_of::<Cpuid>()], Cpuid>(*cpuid_bytes) };
+    // Allowing us to package our cpuid template with our program with
+    println!("cpuid_from_bytes: {:#?}", cpuid_from_bytes);
 }
