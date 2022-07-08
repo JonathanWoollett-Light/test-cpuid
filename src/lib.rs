@@ -1,26 +1,35 @@
+#![feature(const_try)]
 #![allow(non_upper_case_globals, dead_code, unused_imports)]
 //! Example
-//! ```
+//! ```ignore
+//! use test_cpuid::Cpuid;
 //! let cpuid = Cpuid::new();
-//! let highest_calling_parameter = cpuid.highest_function_parameter_an_manufacturer_id.highest_calling_parameter;
+//! let highest_calling_parameter = cpuid
+//!     .leaf0x00_highest_function_parameter_an_manufacturer_id
+//!     .highest_calling_parameter;
 //! let _register0_0_eax = cpuid.leaf::<0>().sub_leaf::<0>().eax();
 //! let _register0_0_ebx = cpuid.leaf::<0>().sub_leaf::<0>().ebx();
 //! let _register0_0_ecx = cpuid.leaf::<0>().sub_leaf::<0>().ecx();
 //! let _register0_0_edx = cpuid.leaf::<0>().sub_leaf::<0>().edx();
 //! ```
 
-use bitflags::bitflags;
 use core::arch::x86_64::{CpuidResult, __cpuid, __cpuid_count, __get_cpuid_max};
-use log_derive::{logfn, logfn_inputs};
-use std::{
-    fmt,
-    fs::File,
-    io::Write,
-    mem::{size_of, transmute},
-    ops::Index,
-    str,
-};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::mem::{size_of, transmute};
+use std::ops::Index;
+use std::path::Path;
+use std::{fmt, str};
+mod bitflags_util;
+use std::ffi::CString;
 
+use arrayvec::ArrayString;
+use bitflags::bitflags;
+use bitflags_util::*;
+use log_derive::{logfn, logfn_inputs};
+use serde::ser::Serializer;
+use serde::{Deserialize, Serialize};
 // -----------------------------------------------------------------------------
 // Bit flag definitions
 // -----------------------------------------------------------------------------
@@ -28,6 +37,7 @@ use std::{
 #[rustfmt::skip]
 bitflags! {
     // Feature Information
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x1_SubLeaf0_Ecx: u32 {
         const sse3 =        1 << 0;
@@ -64,6 +74,7 @@ bitflags! {
         const hypervisor =  1 << 31;
     }
     // Feature Information
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x1_SubLeaf0_Edx: u32 {
         const fpu =         1 << 0;
@@ -100,6 +111,7 @@ bitflags! {
         const pbe =         1 << 31;
     }
     // Thermal and power management
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x6_SubLeaf0_Eax: u32 {
         const digital_thermal_sensor_capability =           1 << 0;
@@ -112,6 +124,7 @@ bitflags! {
         // 7th to 31st bits reserved
     }
     // Thermal and power management
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x6_SubLeaf0_Ecx: u32 {
         const hardware_coordination_feedback_capability =   1 << 0;
@@ -121,6 +134,7 @@ bitflags! {
         // 4th to 31st bits reserved
     }
     // Extended Features
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x7_SubLeaf0_Ebx: u32 {
         const fsgsbase =                        1 << 0;
@@ -160,6 +174,7 @@ bitflags! {
         const avx512_vl =                       1 << 31;
     }
     // Extended Features
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x7_SubLeaf0_Ecx: u32 {
         const prefetchwt1 =         1 << 0;
@@ -192,6 +207,7 @@ bitflags! {
         const pks =                 1 << 31;
     }
     // Extended Features
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x7_SubLeaf0_Edx: u32 {
         // 1st bit reserved
@@ -227,6 +243,7 @@ bitflags! {
         const IA32_CORE_CAPABILITIES = 1 << 30;
         const ssbd = 1 << 31;
     }
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x7_SubLeaf1_Eax: u32 {
         // 0 to 3rd bits reserved
@@ -244,6 +261,7 @@ bitflags! {
         // 23rd to 31th bits reserved
     }
     /// https://en.wikipedia.org/wiki/CPUID#EAX=0Dh,_ECX=1
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0xD_SubLeaf1_Eax: u32 {
         const xsaveopt =    1 << 0;
@@ -253,6 +271,7 @@ bitflags! {
         // 4th to 31st bits reserved.
     }
     /// https://en.wikipedia.org/wiki/CPUID#EAX=12h,_ECX=0:_SGX_Leaf_Functions
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x12_SubLeaf0_Eax: u32 {
         const sgx1 = 1 << 0;
@@ -263,6 +282,7 @@ bitflags! {
         // 7th to 31st bits reserved.
     }
     /// https://en.wikipedia.org/wiki/CPUID#EAX=14h,_ECX=0
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x14_SubLeaf0_Ebx: u32 {
         // 0 to 3rd bits reserved.
@@ -270,6 +290,7 @@ bitflags! {
         // 5th to 31st bits reserved.
     }
     /// https://en.wikipedia.org/wiki/CPUID#EAX=19h
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x19_SubLeaf0_Ebx: u32 {
         const aes_kle = 1 << 0;
@@ -279,6 +300,7 @@ bitflags! {
         const kl_msrs = 1 << 4;
         // 5th to 31st bits reserved.
     }
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x80000001_SubLeaf0_Edx: u32 {
         // Duplicates are from leaf 1 sub-leaf 0 edx.
@@ -300,6 +322,7 @@ bitflags! {
         const _3dnowext =   1 << 30;
         const _3dnow =      1 << 31;
     }
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x80000001_SubLeaf0_Ecx: u32 {
         const lahf =            1 << 0;
@@ -334,6 +357,7 @@ bitflags! {
         const addr_mask_ext =   1 << 30;
         // 31st bit reserved
     }
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x80000008_SubLeaf0_Ebx: u32 {
         const clzero = 1 << 0;
@@ -362,6 +386,7 @@ bitflags! {
         //26th to 31st bits reserved.
     }
     /// https://en.wikipedia.org/wiki/CPUID#EAX=8000001Fh
+    #[derive(Serialize, Deserialize)]
     #[repr(C)]
     pub struct Leaf0x8000001F_SubLeaf0_Eax: u32 {
         const sme = 1 << 0;
@@ -467,47 +492,56 @@ impl Leaf0x8000001F_SubLeaf0_Eax {
 // -----------------------------------------------------------------------------
 
 /// https://en.wikipedia.org/wiki/CPUID
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Cpuid {
     /// leaf 0
-    pub highest_function_parameter_an_manufacturer_id: HighestFunctionParameterAndManufacturerID,
+    pub leaf0x00_highest_function_parameter_an_manufacturer_id: HighestFunctionParameterAndManufacturerID,
     /// leaf 1
-    pub process_info_and_feature_bits: ProcessorInfoAndFeatureBits,
+    pub leaf0x01_process_info_and_feature_bits: ProcessorInfoAndFeatureBits,
     /// leaf 6
-    pub thermal_and_power_management: ThermalAndPowerManagement,
+    pub leaf0x06_thermal_and_power_management: ThermalAndPowerManagement,
     /// leaf 7
-    pub extended_features: ExtendedFeatures,
+    pub leaf0x07_extended_features: ExtendedFeatures,
     /// leaf 13 / 0x0D
-    pub cpuid_feature_bits1: Leaf0xD_SubLeaf1_Eax,
+    #[serde(with = "i")]
+    pub leaf0x0d_cpuid_feature_bits: Leaf0xD_SubLeaf1_Eax,
     /// leaf 18 / 0x12h
-    pub cpuid_feature_bits2: Leaf0x12_SubLeaf0_Eax,
+    #[serde(with = "j")]
+    pub leaf0x12_cpuid_feature_bits: Leaf0x12_SubLeaf0_Eax,
     /// leaf 20 / 0x14h
-    pub cpuid_feature_bits3: Leaf0x14_SubLeaf0_Ebx,
+    #[serde(with = "k")]
+    pub leaf0x14_cpuid_feature_bits: Leaf0x14_SubLeaf0_Ebx,
     /// leaf 25 / 0x19h
-    pub cpuid_feature_bits4: Leaf0x19_SubLeaf0_Ebx,
+    #[serde(with = "l")]
+    pub leaf0x19_cpuid_feature_bits: Leaf0x19_SubLeaf0_Ebx,
     /// leaf 0x80000001
-    pub extended_processor_info_and_feature_bits: ExtendedProcessorInfoAndFeatureBits,
+    pub leaf0x80000001_highest_function_parameter_an_manufacturer_id: ExtendedProcessorInfoAndFeatureBits,
     /// leaf 0x80000008
-    pub virtual_and_physical_address_sizes: VirtualAndPhysicalAddressSizes,
+    pub leaf0x80000008_virtual_and_physical_address_sizes: VirtualAndPhysicalAddressSizes,
     /// leaf 0x8000001F
-    pub cpuid_feature_bits5: Leaf0x8000001F_SubLeaf0_Eax,
+    #[serde(with="p")]
+    pub leaf0x8000001f_cpuid_feature_bits: Leaf0x8000001F_SubLeaf0_Eax,
 }
 impl Cpuid {
     pub fn new() -> Self {
         Self {
-            highest_function_parameter_an_manufacturer_id: {
+            leaf0x00_highest_function_parameter_an_manufacturer_id: {
                 let CpuidResult { eax, ebx, ecx, edx } = unsafe { __cpuid(0) };
                 let (ebx_bytes, edx_bytes, ecx_bytes) =
                     (ebx.to_ne_bytes(), edx.to_ne_bytes(), ecx.to_ne_bytes());
                 HighestFunctionParameterAndManufacturerID {
-                    manufacturer_id: [ebx_bytes, edx_bytes, ecx_bytes]
-                        .concat()
-                        .try_into()
-                        .unwrap(),
+                    manufacturer_id: ArrayString::from_byte_string(
+                        &[ebx_bytes, edx_bytes, ecx_bytes]
+                            .concat()
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .unwrap(),
                     highest_calling_parameter: eax,
                 }
             },
-            process_info_and_feature_bits: {
+            leaf0x01_process_info_and_feature_bits: {
                 let CpuidResult { eax, ebx, ecx, edx } = unsafe { __cpuid_count(1, 0) };
                 ProcessorInfoAndFeatureBits {
                     processor_version_information: ProcessorVersionInformation(eax),
@@ -518,7 +552,7 @@ impl Cpuid {
                     },
                 }
             },
-            thermal_and_power_management: {
+            leaf0x06_thermal_and_power_management: {
                 let CpuidResult {
                     eax,
                     ebx,
@@ -533,7 +567,7 @@ impl Cpuid {
                     number_of_interrupt_thresholds: Leaf6SubLeaf0Ebx(ebx),
                 }
             },
-            extended_features: {
+            leaf0x07_extended_features: {
                 let CpuidResult {
                     eax: _,
                     ebx: ebx0,
@@ -555,7 +589,7 @@ impl Cpuid {
                     sub_leaf1: Leaf0x7_SubLeaf1_Eax { bits: eax1 },
                 }
             },
-            cpuid_feature_bits1: {
+            leaf0x0d_cpuid_feature_bits: {
                 let CpuidResult {
                     eax,
                     ebx: _,
@@ -564,7 +598,7 @@ impl Cpuid {
                 } = unsafe { __cpuid_count(13, 1) };
                 Leaf0xD_SubLeaf1_Eax { bits: eax }
             },
-            cpuid_feature_bits2: {
+            leaf0x12_cpuid_feature_bits: {
                 let CpuidResult {
                     eax,
                     ebx: _,
@@ -573,7 +607,7 @@ impl Cpuid {
                 } = unsafe { __cpuid_count(18, 0) };
                 Leaf0x12_SubLeaf0_Eax { bits: eax }
             },
-            cpuid_feature_bits3: {
+            leaf0x14_cpuid_feature_bits: {
                 let CpuidResult {
                     eax: _,
                     ebx,
@@ -582,7 +616,7 @@ impl Cpuid {
                 } = unsafe { __cpuid_count(20, 0) };
                 Leaf0x14_SubLeaf0_Ebx { bits: ebx }
             },
-            cpuid_feature_bits4: {
+            leaf0x19_cpuid_feature_bits: {
                 let CpuidResult {
                     eax: _,
                     ebx,
@@ -591,7 +625,7 @@ impl Cpuid {
                 } = unsafe { __cpuid_count(25, 0) };
                 Leaf0x19_SubLeaf0_Ebx { bits: ebx }
             },
-            extended_processor_info_and_feature_bits: {
+            leaf0x80000001_highest_function_parameter_an_manufacturer_id: {
                 let CpuidResult {
                     eax: _,
                     ebx: _,
@@ -603,7 +637,7 @@ impl Cpuid {
                     ecx: Leaf0x80000001_SubLeaf0_Ecx { bits: ecx },
                 }
             },
-            virtual_and_physical_address_sizes: {
+            leaf0x80000008_virtual_and_physical_address_sizes: {
                 let CpuidResult {
                     eax,
                     ebx,
@@ -616,7 +650,7 @@ impl Cpuid {
                     ecx: Leaf0x80000008_SubLeaf0_Ecx(ecx),
                 }
             },
-            cpuid_feature_bits5: {
+            leaf0x8000001f_cpuid_feature_bits: {
                 let CpuidResult {
                     eax,
                     ebx: _,
@@ -627,31 +661,37 @@ impl Cpuid {
             },
         }
     }
+    /// Saves `self` to a binary file
+    pub fn save<P: AsRef<Path>>(self, path: P) -> std::io::Result<()> {
+        let bytes = unsafe { transmute::<_, [u8; 104]>(self) };
+        let mut file = File::create(path)?;
+        file.write_all(&bytes)
+    }
     // If the feature set of `self` covers the feature set of `other`.
     #[logfn(Trace)]
     #[logfn_inputs(Info)]
     pub fn covers(&self, other: &Self) -> bool {
         // We first check they have the same manufacturer
-        self.highest_function_parameter_an_manufacturer_id
-            .covers(&other.highest_function_parameter_an_manufacturer_id)
+        self.leaf0x00_highest_function_parameter_an_manufacturer_id
+            .covers(&other.leaf0x00_highest_function_parameter_an_manufacturer_id)
             && self
-                .process_info_and_feature_bits
-                .covers(&other.process_info_and_feature_bits)
+                .leaf0x01_process_info_and_feature_bits
+                .covers(&other.leaf0x01_process_info_and_feature_bits)
             && self
-                .thermal_and_power_management
-                .covers(&other.thermal_and_power_management)
-            && self.extended_features.covers(&other.extended_features)
-            && self.cpuid_feature_bits1.contains(other.cpuid_feature_bits1)
-            && self.cpuid_feature_bits2.contains(other.cpuid_feature_bits2)
-            && self.cpuid_feature_bits3.contains(other.cpuid_feature_bits3)
-            && self.cpuid_feature_bits4.contains(other.cpuid_feature_bits4)
+                .leaf0x06_thermal_and_power_management
+                .covers(&other.leaf0x06_thermal_and_power_management)
+            && self.leaf0x07_extended_features.covers(&other.leaf0x07_extended_features)
+            && self.leaf0x0d_cpuid_feature_bits.contains(other.leaf0x0d_cpuid_feature_bits)
+            && self.leaf0x12_cpuid_feature_bits.contains(other.leaf0x12_cpuid_feature_bits)
+            && self.leaf0x14_cpuid_feature_bits.contains(other.leaf0x14_cpuid_feature_bits)
+            && self.leaf0x19_cpuid_feature_bits.contains(other.leaf0x19_cpuid_feature_bits)
             && self
-                .extended_processor_info_and_feature_bits
-                .covers(&other.extended_processor_info_and_feature_bits)
+                .leaf0x80000001_highest_function_parameter_an_manufacturer_id
+                .covers(&other.leaf0x80000001_highest_function_parameter_an_manufacturer_id)
             && self
-                .virtual_and_physical_address_sizes
-                .covers(&other.virtual_and_physical_address_sizes)
-            && self.cpuid_feature_bits5.contains(other.cpuid_feature_bits5)
+                .leaf0x80000008_virtual_and_physical_address_sizes
+                .covers(&other.leaf0x80000008_virtual_and_physical_address_sizes)
+            && self.leaf0x8000001f_cpuid_feature_bits.contains(other.leaf0x8000001f_cpuid_feature_bits)
     }
     pub fn leaf<const N: usize>(&self) -> &<Cpuid as Leaf<N>>::Output
     where
@@ -668,67 +708,67 @@ pub trait Leaf<const INDEX: usize> {
 impl Leaf<0> for Cpuid {
     type Output = HighestFunctionParameterAndManufacturerID;
     fn leaf(&self) -> &Self::Output {
-        &self.highest_function_parameter_an_manufacturer_id
+        &self.leaf0x00_highest_function_parameter_an_manufacturer_id
     }
 }
 impl Leaf<1> for Cpuid {
     type Output = ProcessorInfoAndFeatureBits;
     fn leaf(&self) -> &Self::Output {
-        &self.process_info_and_feature_bits
+        &self.leaf0x01_process_info_and_feature_bits
     }
 }
 impl Leaf<6> for Cpuid {
     type Output = ThermalAndPowerManagement;
     fn leaf(&self) -> &Self::Output {
-        &self.thermal_and_power_management
+        &self.leaf0x06_thermal_and_power_management
     }
 }
 impl Leaf<7> for Cpuid {
     type Output = ExtendedFeatures;
     fn leaf(&self) -> &Self::Output {
-        &self.extended_features
+        &self.leaf0x07_extended_features
     }
 }
 impl Leaf<13> for Cpuid {
     type Output = Leaf0xD_SubLeaf1_Eax;
     fn leaf(&self) -> &Self::Output {
-        &self.cpuid_feature_bits1
+        &self.leaf0x0d_cpuid_feature_bits
     }
 }
 impl Leaf<18> for Cpuid {
     type Output = Leaf0x12_SubLeaf0_Eax;
     fn leaf(&self) -> &Self::Output {
-        &self.cpuid_feature_bits2
+        &self.leaf0x12_cpuid_feature_bits
     }
 }
 impl Leaf<20> for Cpuid {
     type Output = Leaf0x14_SubLeaf0_Ebx;
     fn leaf(&self) -> &Self::Output {
-        &self.cpuid_feature_bits3
+        &self.leaf0x14_cpuid_feature_bits
     }
 }
 impl Leaf<25> for Cpuid {
     type Output = Leaf0x19_SubLeaf0_Ebx;
     fn leaf(&self) -> &Self::Output {
-        &self.cpuid_feature_bits4
+        &self.leaf0x19_cpuid_feature_bits
     }
 }
 impl Leaf<0x80000001> for Cpuid {
     type Output = ExtendedProcessorInfoAndFeatureBits;
     fn leaf(&self) -> &Self::Output {
-        &self.extended_processor_info_and_feature_bits
+        &self.leaf0x80000001_highest_function_parameter_an_manufacturer_id
     }
 }
 impl Leaf<0x80000008> for Cpuid {
     type Output = VirtualAndPhysicalAddressSizes;
     fn leaf(&self) -> &Self::Output {
-        &self.virtual_and_physical_address_sizes
+        &self.leaf0x80000008_virtual_and_physical_address_sizes
     }
 }
 impl Leaf<0x8000001F> for Cpuid {
     type Output = Leaf0x8000001F_SubLeaf0_Eax;
     fn leaf(&self) -> &Self::Output {
-        &self.cpuid_feature_bits5
+        &self.leaf0x8000001f_cpuid_feature_bits
     }
 }
 
@@ -809,7 +849,6 @@ impl SubLeaf<0> for Leaf0x8000001F_SubLeaf0_Eax {
     }
 }
 
-
 impl Default for Cpuid {
     /// Sets the default CPU template based off the current machine
     fn default() -> Self {
@@ -822,50 +861,53 @@ impl fmt::Debug for Cpuid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Cpuid")
             .field(
-                "highest_function_parameter_an_manufacturer_id",
-                &&self.highest_function_parameter_an_manufacturer_id,
+                "leaf0x00_highest_function_parameter_an_manufacturer_id",
+                &&self.leaf0x00_highest_function_parameter_an_manufacturer_id,
             )
             .field(
-                "process_info_and_feature_bits",
-                &self.process_info_and_feature_bits,
+                "leaf0x01_process_info_and_feature_bits",
+                &self.leaf0x01_process_info_and_feature_bits,
             )
             .field(
-                "thermal_and_power_management",
-                &self.thermal_and_power_management,
+                "leaf0x06_thermal_and_power_management",
+                &self.leaf0x06_thermal_and_power_management,
             )
-            .field("extended_features", &self.extended_features)
-            .field("cpuid_feature_bits1", &self.cpuid_feature_bits1)
-            .field("cpuid_feature_bits2", &self.cpuid_feature_bits2)
-            .field("cpuid_feature_bits3", &self.cpuid_feature_bits3)
-            .field("cpuid_feature_bits4", &self.cpuid_feature_bits4)
+            .field("leaf0x07_extended_features", &self.leaf0x07_extended_features)
+            .field("leaf0x0d_cpuid_feature_bits", &self.leaf0x0d_cpuid_feature_bits)
+            .field("leaf0x12_cpuid_feature_bits", &self.leaf0x12_cpuid_feature_bits)
+            .field("leaf0x14_cpuid_feature_bits", &self.leaf0x14_cpuid_feature_bits)
+            .field("leaf0x19_cpuid_feature_bits", &self.leaf0x19_cpuid_feature_bits)
             .field(
-                "extended_processor_info_and_feature_bits",
-                &self.extended_processor_info_and_feature_bits,
+                "leaf0x80000001_highest_function_parameter_an_manufacturer_id",
+                &self.leaf0x80000001_highest_function_parameter_an_manufacturer_id,
             )
             .field(
-                "virtual_and_physical_address_sizes",
-                &self.virtual_and_physical_address_sizes,
+                "leaf0x80000008_virtual_and_physical_address_sizes",
+                &self.leaf0x80000008_virtual_and_physical_address_sizes,
             )
-            .field("cpuid_feature_bits5", &self.cpuid_feature_bits5)
+            .field("leaf0x8000001f_cpuid_feature_bits", &self.leaf0x8000001f_cpuid_feature_bits)
             .finish()
     }
 }
 
 /// https://en.wikipedia.org/wiki/CPUID#EAX=0:_Highest_Function_Parameter_and_Manufacturer_ID
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct HighestFunctionParameterAndManufacturerID {
-    pub manufacturer_id: [u8; 12],
+    /// We use [`ArrayString`] here over `[u8;12]` so it serializes to and from a string making the
+    /// file more easily editable. This incurs an extra 4 bytes of memory usage.
+    pub manufacturer_id: ArrayString<12>,
     pub highest_calling_parameter: u32,
 }
 impl HighestFunctionParameterAndManufacturerID {
     pub fn ebx(&self) -> u32 {
-        u32::from_ne_bytes(self.manufacturer_id[0..4].try_into().unwrap())
+        u32::from_ne_bytes(self.manufacturer_id.as_bytes()[0..4].try_into().unwrap())
     }
     pub fn edx(&self) -> u32 {
-        u32::from_ne_bytes(self.manufacturer_id[4..8].try_into().unwrap())
+        u32::from_ne_bytes(self.manufacturer_id.as_bytes()[4..8].try_into().unwrap())
     }
     pub fn ecx(&self) -> u32 {
-        u32::from_ne_bytes(self.manufacturer_id[8..12].try_into().unwrap())
+        u32::from_ne_bytes(self.manufacturer_id.as_bytes()[8..12].try_into().unwrap())
     }
     pub fn eax(&self) -> u32 {
         self.highest_calling_parameter
@@ -886,18 +928,17 @@ impl HighestFunctionParameterAndManufacturerID {
 impl fmt::Debug for HighestFunctionParameterAndManufacturerID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HighestFunctionParameterAndManufacturerID")
-            .field(
-                "manufacturer_id",
-                &str::from_utf8(&self.manufacturer_id).unwrap(),
-            )
+            .field("manufacturer_id", &self.manufacturer_id)
             .field("highest_calling_parameter", &self.highest_calling_parameter)
             .finish()
     }
 }
+
 /// https://en.wikipedia.org/wiki/CPUID#EAX=1:_Processor_Info_and_Feature_Bits
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ProcessorInfoAndFeatureBits {
+    #[serde(with = "processor_version_information_mod")]
     pub processor_version_information: ProcessorVersionInformation,
     pub additional_information: AdditionalInformation,
     pub feature_information: FeatureInformation,
@@ -907,8 +948,9 @@ impl ProcessorInfoAndFeatureBits {
         u32::from_ne_bytes([
             self.additional_information.brand_index,
             self.additional_information.clflush_line_size,
-            self.additional_information.maximum_addressable_logical_processor_ids,
-            self.additional_information.local_apic_id
+            self.additional_information
+                .maximum_addressable_logical_processor_ids,
+            self.additional_information.local_apic_id,
         ])
     }
     pub fn edx(&self) -> u32 {
@@ -938,31 +980,68 @@ impl ProcessorInfoAndFeatureBits {
         <Self as SubLeaf<N>>::sub_leaf(self)
     }
 }
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ProcessorVersionInformation(u32);
 impl ProcessorVersionInformation {
-    fn stepping_id(&self) -> u8 {
+    pub fn stepping_id(&self) -> u8 {
         (self.0 & 0b0000_0000_0000_0000_0000_0000_0000_1111) as u8
     }
-    fn model(&self) -> u8 {
+    pub fn model(&self) -> u8 {
         ((self.0 & 0b0000_0000_0000_0000_0000_0000_1111_0000) >> 4) as u8
     }
-    fn family_id(&self) -> u8 {
+    pub fn family_id(&self) -> u8 {
         ((self.0 & 0b0000_0000_0000_0000_0000_1111_0000_0000) >> 8) as u8
     }
-    fn processor_type(&self) -> u8 {
+    pub fn processor_type(&self) -> u8 {
         ((self.0 & 0b0000_0000_0000_0000_0011_0000_0000_0000) >> 12) as u8
     }
-    fn extended_model_id(&self) -> u8 {
+    pub fn extended_model_id(&self) -> u8 {
         ((self.0 & 0b0000_0000_0000_1111_0000_0000_0000_0000) >> 16) as u8
     }
-    fn extended_family_id(&self) -> u8 {
+    pub fn extended_family_id(&self) -> u8 {
         ((self.0 & 0b0000_1111_1111_0000_0000_0000_0000_0000) >> 20) as u8
+    }
+    pub fn set_stepping_id(&mut self, x: u8) {
+        assert!(x < 16);
+        self.0 = (self.0 & !0b0000_0000_0000_0000_0000_0000_0000_1111) | (x as u32)
+    }
+    pub fn set_model(&mut self, x: u8) {
+        assert!(x < 16);
+        self.0 = (self.0 & !0b0000_0000_0000_0000_0000_0000_1111_0000) | ((x as u32) << 4);
+    }
+    pub fn set_family_id(&mut self, x: u8) {
+        assert!(x < 16);
+        self.0 = (self.0 & !0b0000_0000_0000_0000_0000_1111_0000_0000) | ((x as u32) << 8);
+    }
+    pub fn set_processor_type(&mut self, x: u8) {
+        assert!(x < 4);
+        self.0 = (self.0 & !0b0000_0000_0000_0000_0011_0000_0000_0000) | ((x as u32) << 12);
+    }
+    pub fn set_extended_model_id(&mut self, x: u8) {
+        assert!(x < 16);
+        self.0 = (self.0 & !0b0000_0000_0000_1111_0000_0000_0000_0000) | ((x as u32) << 16);
+    }
+    pub fn set_extended_family_id(&mut self, x: u8) {
+        self.0 = (self.0 & !0b0000_1111_1111_0000_0000_0000_0000_0000) | ((x as u32) << 20);
     }
     #[logfn(Trace)]
     #[logfn_inputs(Info)]
     fn covers(&self, other: &Self) -> bool {
         self.0 == other.0
+    }
+}
+impl TryFrom<HashMap<&str, u8>> for ProcessorVersionInformation {
+    type Error = ();
+    fn try_from(value: HashMap<&str, u8>) -> Result<Self, Self::Error> {
+        let mut base = Self(0);
+        base.set_stepping_id(*value.get("stepping_id").ok_or(())?);
+        base.set_model(*value.get("model").ok_or(())?);
+        base.set_family_id(*value.get("family_id").ok_or(())?);
+        base.set_processor_type(*value.get("processor_type").ok_or(())?);
+        base.set_extended_model_id(*value.get("extended_model_id").ok_or(())?);
+        base.set_extended_family_id(*value.get("extended_family_id").ok_or(())?);
+        Ok(base)
     }
 }
 impl fmt::Debug for ProcessorVersionInformation {
@@ -978,7 +1057,7 @@ impl fmt::Debug for ProcessorVersionInformation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AdditionalInformation {
     pub brand_index: u8,
@@ -999,9 +1078,12 @@ impl AdditionalInformation {
         // && self.local_apic_id == other.local_apic_id
     }
 }
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct FeatureInformation {
+    #[serde(with = "a")]
     pub ecx: Leaf0x1_SubLeaf0_Ecx,
+    #[serde(with = "b")]
     pub edx: Leaf0x1_SubLeaf0_Edx,
 }
 impl FeatureInformation {
@@ -1022,7 +1104,7 @@ impl fmt::Debug for FeatureInformation {
     }
 }
 /// https://en.wikipedia.org/wiki/CPUID#EAX=6:_Thermal_and_power_management
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ThermalAndPowerManagement {
     pub features: ThermalAndPowerManagementFeatures,
@@ -1053,9 +1135,12 @@ impl ThermalAndPowerManagement {
         <Self as SubLeaf<N>>::sub_leaf(self)
     }
 }
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ThermalAndPowerManagementFeatures {
+    #[serde(with = "c")]
     pub eax: Leaf0x6_SubLeaf0_Eax,
+    #[serde(with = "d")]
     pub ecx: Leaf0x6_SubLeaf0_Ecx,
 }
 impl ThermalAndPowerManagementFeatures {
@@ -1075,6 +1160,7 @@ impl fmt::Debug for ThermalAndPowerManagementFeatures {
         }
     }
 }
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Leaf6SubLeaf0Ebx(u32);
 impl Leaf6SubLeaf0Ebx {
@@ -1093,9 +1179,11 @@ impl fmt::Debug for Leaf6SubLeaf0Ebx {
     }
 }
 /// https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=0:_Extended_Features & https://en.wikipedia.org/wiki/CPUID#EAX=7,_ECX=1:_Extended_Features
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ExtendedFeatures {
     pub sub_leaf0: ExtendedFeaturesSubLeaf0,
+    #[serde(with = "h")]
     pub sub_leaf1: Leaf0x7_SubLeaf1_Eax,
 }
 impl ExtendedFeatures {
@@ -1111,11 +1199,14 @@ impl ExtendedFeatures {
         <Self as SubLeaf<N>>::sub_leaf(self)
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ExtendedFeaturesSubLeaf0 {
+    #[serde(with = "e")]
     pub ebx: Leaf0x7_SubLeaf0_Ebx,
+    #[serde(with = "f")]
     pub ecx: Leaf0x7_SubLeaf0_Ecx,
+    #[serde(with = "g")]
     pub edx: Leaf0x7_SubLeaf0_Edx,
 }
 impl ExtendedFeaturesSubLeaf0 {
@@ -1173,9 +1264,12 @@ impl fmt::Debug for ExtendedFeatures {
     }
 }
 /// https://en.wikipedia.org/wiki/CPUID#EAX=80000001h:_Extended_Processor_Info_and_Feature_Bits
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ExtendedProcessorInfoAndFeatureBits {
+    #[serde(with = "m")]
     pub edx: Leaf0x80000001_SubLeaf0_Edx,
+    #[serde(with = "n")]
     pub ecx: Leaf0x80000001_SubLeaf0_Ecx,
 }
 impl ExtendedProcessorInfoAndFeatureBits {
@@ -1208,10 +1302,14 @@ impl fmt::Debug for ExtendedProcessorInfoAndFeatureBits {
     }
 }
 /// https://en.wikipedia.org/wiki/CPUID#EAX=80000008h:_Virtual_and_Physical_address_Sizes
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct VirtualAndPhysicalAddressSizes {
+    #[serde(with="leaf0x80000008_sub_leaf0_eax_mod")]
     pub eax: Leaf0x80000008_SubLeaf0_Eax,
+    #[serde(with="o")]
     pub ebx: Leaf0x80000008_SubLeaf0_Ebx,
+    #[serde(with="leaf0x80000008_sub_leaf0_ecx_mod")]
     pub ecx: Leaf0x80000008_SubLeaf0_Ecx,
 }
 impl VirtualAndPhysicalAddressSizes {
@@ -1263,15 +1361,21 @@ impl fmt::Debug for VirtualAndPhysicalAddressSizes {
             .finish()
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Leaf0x80000008_SubLeaf0_Eax(u32);
 impl Leaf0x80000008_SubLeaf0_Eax {
-    fn number_of_physical_address_bits(&self) -> u8 {
+    pub fn number_of_physical_address_bits(&self) -> u8 {
         (self.0 & 0b0000_0000_0000_0000_0000_0000_1111_1111) as u8
     }
-    fn number_of_linear_address_bits(&self) -> u8 {
+    pub fn number_of_linear_address_bits(&self) -> u8 {
         ((self.0 & 0b0000_0000_0000_0000_1111_1111_0000_0000) >> 8) as u8
+    }
+    pub fn set_number_of_physical_address_bits(&mut self,x:u8) {
+        self.0 = (self.0 & !0b0000_0000_0000_0000_0000_0000_1111_1111) | (x as u32);
+    }
+    pub fn set_number_of_linear_address_bits(&mut self,x:u8) {
+        self.0 = (self.0 & !0b0000_0000_0000_0000_1111_1111_0000_0000) | ((x as u32) << 8);
     }
     // 16th to 31st bits reserved
     #[logfn(Trace)]
@@ -1281,19 +1385,40 @@ impl Leaf0x80000008_SubLeaf0_Eax {
             && self.number_of_linear_address_bits() >= other.number_of_linear_address_bits()
     }
 }
-#[derive(Debug)]
+impl TryFrom<HashMap<&str, u8>> for Leaf0x80000008_SubLeaf0_Eax {
+    type Error = ();
+    fn try_from(value: HashMap<&str, u8>) -> Result<Self, Self::Error> {
+        let mut base = Self(0);
+        base.set_number_of_physical_address_bits(*value.get("number_of_physical_address_bits").ok_or(())?);
+        base.set_number_of_linear_address_bits(*value.get("number_of_linear_address_bits").ok_or(())?);
+        Ok(base)
+    }
+}
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct Leaf0x80000008_SubLeaf0_Ecx(u32);
 impl Leaf0x80000008_SubLeaf0_Ecx {
-    fn number_of_physical_cores_minus_1(&self) -> u8 {
+    pub fn number_of_physical_cores_minus_1(&self) -> u8 {
         (self.0 & 0b0000_0000_0000_0000_0000_0000_1111_1111) as u8
     }
     // 8th to 11th bits reserved
-    fn log2_of_maximum_apic_id(&self) -> u8 {
+    pub fn log2_of_maximum_apic_id(&self) -> u8 {
         ((self.0 & 0b0000_0000_0000_0000_1111_0000_0000_0000) >> 12) as u8
     }
-    fn performance_timestamp_counter_size(&self) -> u8 {
+    pub fn performance_timestamp_counter_size(&self) -> u8 {
         ((self.0 & 0b0000_0000_0000_0011_0000_0000_0000_0000) >> 16) as u8
+    }
+    pub fn set_number_of_physical_cores_minus_1(&mut self,x:u8) {
+        self.0 = (self.0 & !0b0000_0000_0000_0000_0000_0000_1111_1111) | (x as u32);
+    }
+    // 8th to 11th bits reserved
+    pub fn set_log2_of_maximum_apic_id(&mut self,x:u8) {
+        assert!(x < 16);
+        self.0 = (self.0 & !0b0000_0000_0000_0000_1111_0000_0000_0000) | ((x as u32) << 12);
+    }
+    pub fn set_performance_timestamp_counter_size(&mut self,x:u8) {
+        assert!(x < 4);
+        self.0 =(self.0 & !0b0000_0000_0000_0011_0000_0000_0000_0000) | ((x as u32) << 16);
     }
     // 18th to 31st bits reserved
     #[logfn(Trace)]
@@ -1305,47 +1430,66 @@ impl Leaf0x80000008_SubLeaf0_Ecx {
                 >= other.performance_timestamp_counter_size()
     }
 }
+impl TryFrom<HashMap<&str, u8>> for Leaf0x80000008_SubLeaf0_Ecx {
+    type Error = ();
+    fn try_from(value: HashMap<&str, u8>) -> Result<Self, Self::Error> {
+        let mut base = Self(0);
+        base.set_number_of_physical_cores_minus_1(*value.get("number_of_physical_cores_minus_1").ok_or(())?);
+        base.set_log2_of_maximum_apic_id(*value.get("log2_of_maximum_apic_id").ok_or(())?);
+        base.set_performance_timestamp_counter_size(*value.get("performance_timestamp_counter_size").ok_or(())?);
+        Ok(base)
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::fs::read_to_string;
+
     use simple_logger::SimpleLogger;
+
+    use super::*;
     #[test]
     fn print() {
-        SimpleLogger::new().init().unwrap();
+        // SimpleLogger::new().init().unwrap();
         let cpuid = Cpuid::new();
-        println!("cpuid: {:#?}",cpuid);
+        println!("cpuid: {:#?}", cpuid);
     }
     #[test]
     fn save_load() {
-        SimpleLogger::new().init().unwrap();
-
-        assert_eq!(size_of::<Cpuid>(), 100);
-
-        // We load cpuid
         let cpuid = Cpuid::new();
-        // println!("cpuid: {:#?}", cpuid);
+        println!("cpuid: {:#?}", cpuid);
+        // Saves to binary file
+        cpuid.clone().save("cpuid-x86_64").unwrap();
 
-        // We transmute/reinterpret-cast it to an array of bytes
-        let bytes = unsafe { transmute::<_, [u8; 100]>(cpuid) };
-        println!("a: {:?}", bytes);
-
-        // We store these bytes in a binary file
-        let mut file = File::create("cpuid-x86_64").unwrap();
-        file.write_all(&bytes).unwrap();
-
-        // We get bytes at compile time
-        const cpuid_x86_64_bytes: &'static [u8; 100] = include_bytes!("../cpuid-x86_64");
-        println!("b: {:?}", cpuid_x86_64_bytes);
-
-        // We define a constant exhaustive template based off these bytes
-        const cpuid_x86_64_template: Cpuid =
-            unsafe { transmute::<[u8; 100], Cpuid>(*cpuid_x86_64_bytes) };
-
-        // Allowing us to package our cpuid template with our program with
-        // println!("cpuid_x86_64_template: {:#?}", cpuid_x86_64_template);
-        assert!(cpuid_x86_64_template.covers(&Cpuid::new()));
+        // TODO Add `const fn load`
+        // Loads at compile time
+        const CPUID: Cpuid =
+            unsafe { transmute::<[u8; 104], Cpuid>(*include_bytes!("../cpuid-x86_64")) };
+        println!("CPUID: {:#?}", CPUID);
+        // Since `CPUID` is the previous version of `cpuid` they may differ in `local_apic_id`, thus
+        // we cannot assert equal.
+        assert!(CPUID.covers(&cpuid));
     }
+    #[test]
+    fn serialize_deserialzie() {
+        let cpuid = Cpuid::new();
+        println!("cpuid: {:#?}", cpuid);
+        let serialized = serde_json::to_string_pretty(&cpuid).unwrap();
+        let mut file = File::create("cpuid-x86_64.json").unwrap();
+        file.write_all(serialized.as_bytes()).unwrap();
+        drop(file);
+
+        let reserialized = read_to_string("cpuid-x86_64.json").unwrap();
+        let deserialized: Cpuid = serde_json::from_str(&reserialized).unwrap();
+        println!("deserialized: {:#?}", deserialized);
+        assert_eq!(cpuid, deserialized);
+    }
+    // #[test]
+    // fn checking() {
+    //     let hold = unsafe
+    // {Leaf0x80000001_SubLeaf0_Edx::from_bits_unchecked(0b00101111110100111111101111111111)};
+    //     println!("hold: {:?}",hold);
+    // }
 
     #[test]
     fn leaf_trait_index() {
@@ -1406,18 +1550,15 @@ mod tests {
         let _register1_0_ecx = cpuid.leaf::<1>().sub_leaf::<0>().ecx();
         let _register1_0_edx = cpuid.leaf::<1>().sub_leaf::<0>().edx();
 
-
         let _register6_0_eax = cpuid.leaf::<6>().sub_leaf::<0>().eax();
         let _register6_0_ebx = cpuid.leaf::<6>().sub_leaf::<0>().ebx();
         let _register6_0_ecx = cpuid.leaf::<6>().sub_leaf::<0>().ecx();
-
 
         let _register7_0_ebx = cpuid.leaf::<7>().sub_leaf::<0>().ebx();
         let _register7_0_ecx = cpuid.leaf::<7>().sub_leaf::<0>().ecx();
         let _register7_0_edx = cpuid.leaf::<7>().sub_leaf::<0>().edx();
 
         let _register7_1_eax = cpuid.leaf::<7>().sub_leaf::<1>().eax();
-
 
         let _register_13_1_eax = cpuid.leaf::<13>().sub_leaf::<1>().eax();
 
@@ -1427,7 +1568,6 @@ mod tests {
 
         let _register0x80000001_0_ecx = cpuid.leaf::<0x80000001>().sub_leaf::<0>().ecx();
         let _register0x80000001_0_edx = cpuid.leaf::<0x80000001>().sub_leaf::<0>().edx();
-
 
         let _register0x80000008_0_eax = cpuid.leaf::<0x80000008>().sub_leaf::<0>().eax();
         let _register0x80000008_0_ebx = cpuid.leaf::<0x80000008>().sub_leaf::<0>().ebx();

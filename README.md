@@ -11,11 +11,11 @@ fn print() {
 ```
 ```
 cpuid: Cpuid {
-    highest_function_parameter_an_manufacturer_id: HighestFunctionParameterAndManufacturerID {
+    leaf0x00_highest_function_parameter_an_manufacturer_id: HighestFunctionParameterAndManufacturerID {
         manufacturer_id: "AuthenticAMD",
         highest_calling_parameter: 13,
     },
-    process_info_and_feature_bits: ProcessorInfoAndFeatureBits {
+    leaf0x01_process_info_and_feature_bits: ProcessorInfoAndFeatureBits {
         processor_version_information: ProcessorVersionInformation {
             stepping_id: 1,
             model: 0,
@@ -32,17 +32,17 @@ cpuid: Cpuid {
         },
         feature_information: sse3 | pclmulqdq | ssse3 | fma | cx16 | sse4_1 | sse4_2 | movbe | popcnt | aes | xsave | osxsave | avx | f16c | rdrnd | hypervisor | fpu | vme | de | pse | tsc | msr | pae | mce | cx8 | apic | sep | mtrr | pge | mca | cmov | pat | pse_36 | clfsh | mmx | fxsr | sse | sse2 | htt,
     },
-    thermal_and_power_management: ThermalAndPowerManagement {
+    leaf0x06_thermal_and_power_management: ThermalAndPowerManagement {
         features: hardware_coordination_feedback_capability,
         number_of_interrupt_thresholds: 0,
     },
-    extended_features: fsgsbase | bmi1 | avx2 | smep | bmi2 | pqdm | pqe | rdseed | adx | smap | clflushopt | clwb | sha | umip | rdpid,
+    leaf0x07_extended_features: fsgsbase | bmi1 | avx2 | smep | bmi2 | pqdm | pqe | rdseed | adx | smap | clflushopt | clwb | sha | umip | rdpid,
     cpuid_feature_bitSubLeaf0x1: xsaveopt | xsavec | xgetbv_ecx1 | xss,
-    cpuid_feature_bits2: (empty),
-    cpuid_feature_bits3: (empty),
-    cpuid_feature_bits4: (empty),
-    extended_processor_info_and_feature_bits: syscall | nx | mmxext | fxsr_opt | pdpe1gb | rdtscp | lm | 0x183f3ff | lahf | cmp_legacy | cr8_legacy | abm | sse4a | missalignsse | _3dnowprefetch | osvw | wdt | topoext,
-    virtual_and_physical_address_sizes: VirtualAndPhysicalAddressSizes {
+    leaf0x12_cpuid_feature_bits: (empty),
+    leaf0x14_cpuid_feature_bits: (empty),
+    leaf0x19_cpuid_feature_bits: (empty),
+    leaf0x80000001_highest_function_parameter_an_manufacturer_id: syscall | nx | mmxext | fxsr_opt | pdpe1gb | rdtscp | lm | 0x183f3ff | lahf | cmp_legacy | cr8_legacy | abm | sse4a | missalignsse | _3dnowprefetch | osvw | wdt | topoext,
+    leaf0x80000008_virtual_and_physical_address_sizes: VirtualAndPhysicalAddressSizes {
         number_of_physical_address_bits: 48,
         number_of_linear_address_bits: 48,
         features: clzero | xrstor_fp_err | ibpb | ibrs | single_thread_ibp | virt_ssbd | 0x0x8000000,
@@ -50,7 +50,7 @@ cpuid: Cpuid {
         log2_of_maximum_apic_id: 7,
         performance_timestamp_counter_size: 0,
     },
-    cpuid_feature_bits5: sev_snp | vmpl | restricted_injection | alternative_injection,
+    leaf0x8000001f_cpuid_feature_bits: sev_snp | vmpl | restricted_injection | alternative_injection,
 }
 ```
 
