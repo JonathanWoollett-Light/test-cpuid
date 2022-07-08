@@ -834,7 +834,7 @@ impl fmt::Debug for Cpuid {
                 &self.thermal_and_power_management,
             )
             .field("extended_features", &self.extended_features)
-            .field("cpuid_feature_bitSubLeaf0x1", &self.cpuid_feature_bits1)
+            .field("cpuid_feature_bits1", &self.cpuid_feature_bits1)
             .field("cpuid_feature_bits2", &self.cpuid_feature_bits2)
             .field("cpuid_feature_bits3", &self.cpuid_feature_bits3)
             .field("cpuid_feature_bits4", &self.cpuid_feature_bits4)
