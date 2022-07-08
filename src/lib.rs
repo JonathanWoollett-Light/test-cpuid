@@ -1311,6 +1311,12 @@ mod tests {
     use super::*;
     use simple_logger::SimpleLogger;
     #[test]
+    fn print() {
+        SimpleLogger::new().init().unwrap();
+        let cpuid = Cpuid::new();
+        println!("cpuid: {:#?}",cpuid);
+    }
+    #[test]
     fn save_load() {
         SimpleLogger::new().init().unwrap();
 
