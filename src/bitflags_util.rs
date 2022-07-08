@@ -19,15 +19,14 @@ bitflags_serde!(Leaf0x80000001_SubLeaf0_Ecx, n);
 
 bitflags_serde!(Leaf0x80000008_SubLeaf0_Ebx, o);
 
-bitflags_serde!(Leaf0x8000001F_SubLeaf0_Eax,p);
+bitflags_serde!(Leaf0x8000001F_SubLeaf0_Eax, p);
 
 #[macro_export]
 macro_rules! bitflags_serde {
     ( $x:ident,$mod:ident ) => {
         pub mod $mod {
             use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
-
-            use crate::$x;
+            use $crate::$x;
             type Flags = $x;
 
             pub fn serialize<S>(date: &Flags, serializer: S) -> Result<S::Ok, S::Error>
@@ -102,8 +101,14 @@ pub mod leaf0x80000008_sub_leaf0_eax_mod {
         S: Serializer,
     {
         let map = [
-            ("number_of_physical_address_bits", date.number_of_physical_address_bits()),
-            ("number_of_linear_address_bits", date.number_of_linear_address_bits()),
+            (
+                "number_of_physical_address_bits",
+                date.number_of_physical_address_bits(),
+            ),
+            (
+                "number_of_linear_address_bits",
+                date.number_of_linear_address_bits(),
+            ),
         ]
         .into_iter()
         .collect::<HashMap<&str, u8>>();
@@ -133,9 +138,15 @@ pub mod leaf0x80000008_sub_leaf0_ecx_mod {
         S: Serializer,
     {
         let map = [
-            ("number_of_physical_cores_minus_1", date.number_of_physical_cores_minus_1()),
+            (
+                "number_of_physical_cores_minus_1",
+                date.number_of_physical_cores_minus_1(),
+            ),
             ("log2_of_maximum_apic_id", date.log2_of_maximum_apic_id()),
-            ("performance_timestamp_counter_size", date.performance_timestamp_counter_size()),
+            (
+                "performance_timestamp_counter_size",
+                date.performance_timestamp_counter_size(),
+            ),
         ]
         .into_iter()
         .collect::<HashMap<&str, u8>>();
