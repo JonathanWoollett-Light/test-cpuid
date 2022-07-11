@@ -14,16 +14,19 @@ bitflags_serde!(Leaf0x12_SubLeaf0_Eax, j);
 bitflags_serde!(Leaf0x14_SubLeaf0_Ebx, k);
 bitflags_serde!(Leaf0x19_SubLeaf0_Ebx, l);
 
-bitflags_serde!(Leaf0x80000001_SubLeaf0_Edx, m);
-bitflags_serde!(Leaf0x80000001_SubLeaf0_Ecx, n);
+bitflags_serde!(Leaf0x8000_0001_SubLeaf0_Edx, m);
+bitflags_serde!(Leaf0x8000_0001_SubLeaf0_Ecx, n);
 
-bitflags_serde!(Leaf0x80000008_SubLeaf0_Ebx, o);
+bitflags_serde!(Leaf0x8000_0008_SubLeaf0_Ebx, o);
 
-bitflags_serde!(Leaf0x8000001F_SubLeaf0_Eax, p);
+bitflags_serde!(Leaf0x8000_001F_SubLeaf0_Eax, p);
 
+const NIBBLE_SEPARATOR: char = '_';
+
+/// Internal macro for serde bit flag implementations.
 #[macro_export]
 macro_rules! bitflags_serde {
-    ( $x:ident,$mod:ident ) => {
+    ( $x:ident, $mod:ident ) => {
         pub mod $mod {
             use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
             use $crate::$x;
@@ -33,7 +36,17 @@ macro_rules! bitflags_serde {
             where
                 S: Serializer,
             {
-                format!("{:032b}", date.bits()).serialize(serializer)
+                // We format the bits in binary
+                let mut base = format!("{:032b}", date.bits());
+                // We insert a nibble separator
+                // TODO Use https://doc.rust-lang.org/std/iter/struct.Intersperse.html when
+                // stabilized.
+                let mut offset = 0;
+                for i in (4..32).step_by(4) {
+                    base.insert(i + offset, $crate::bitflags_util::NIBBLE_SEPARATOR);
+                    offset += 1;
+                }
+                base.serialize(serializer)
             }
 
             pub fn deserialize<'de, D>(deserializer: D) -> Result<Flags, D::Error>
@@ -41,7 +54,10 @@ macro_rules! bitflags_serde {
                 D: Deserializer<'de>,
             {
                 let raw = String::deserialize(deserializer)?;
-                let number = u32::from_str_radix(&raw, 2)
+                // Removes nibble separator
+                let replaced =
+                    raw.replace(&$crate::bitflags_util::NIBBLE_SEPARATOR.to_string(), "");
+                let number = u32::from_str_radix(&replaced, 2)
                     .map_err(|_| serde::de::Error::custom("radix fail"))?;
 
                 // We use `from_bits_unchecked` over `from_bits` here as this allows unlabelled bits
@@ -88,13 +104,13 @@ pub mod processor_version_information_mod {
     }
 }
 
-pub mod leaf0x80000008_sub_leaf0_eax_mod {
+pub mod leaf0x8000_0008_sub_leaf0_eax_mod {
     use std::collections::HashMap;
 
     use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 
-    use crate::Leaf0x80000008_SubLeaf0_Eax;
-    type Flags = Leaf0x80000008_SubLeaf0_Eax;
+    use crate::Leaf0x8000_0008_SubLeaf0_Eax;
+    type Flags = Leaf0x8000_0008_SubLeaf0_Eax;
 
     pub fn serialize<S>(date: &Flags, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -120,18 +136,18 @@ pub mod leaf0x80000008_sub_leaf0_eax_mod {
         D: Deserializer<'de>,
     {
         let raw = HashMap::<&str, u8>::deserialize(deserializer)?;
-        Leaf0x80000008_SubLeaf0_Eax::try_from(raw)
+        Leaf0x8000_0008_SubLeaf0_Eax::try_from(raw)
             .map_err(|_| serde::de::Error::custom("Unexpected flags value {:?}"))
     }
 }
 
-pub mod leaf0x80000008_sub_leaf0_ecx_mod {
+pub mod leaf0x8000_0008_sub_leaf0_ecx_mod {
     use std::collections::HashMap;
 
     use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 
-    use crate::Leaf0x80000008_SubLeaf0_Ecx;
-    type Flags = Leaf0x80000008_SubLeaf0_Ecx;
+    use crate::Leaf0x8000_0008_SubLeaf0_Ecx;
+    type Flags = Leaf0x8000_0008_SubLeaf0_Ecx;
 
     pub fn serialize<S>(date: &Flags, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -158,7 +174,7 @@ pub mod leaf0x80000008_sub_leaf0_ecx_mod {
         D: Deserializer<'de>,
     {
         let raw = HashMap::<&str, u8>::deserialize(deserializer)?;
-        Leaf0x80000008_SubLeaf0_Ecx::try_from(raw)
+        Leaf0x8000_0008_SubLeaf0_Ecx::try_from(raw)
             .map_err(|_| serde::de::Error::custom("Unexpected flags value {:?}"))
     }
 }
