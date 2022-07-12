@@ -5,6 +5,7 @@
     clippy::similar_names,
     clippy::unsafe_derive_deserialize
 )]
+#![feature(vec_into_raw_parts)]
 //! Example
 //! ```ignore
 //! use test_cpuid::Cpuid;
@@ -41,9 +42,11 @@ use std::path::Path;
 use std::{fmt, str};
 mod bitflags_util;
 
+mod cpuid_ffi;
 use bitflags::bitflags;
 #[allow(clippy::wildcard_imports)]
 use bitflags_util::*;
+pub use cpuid_ffi::*;
 use log_derive::{logfn, logfn_inputs};
 use serde::{Deserialize, Serialize};
 // -----------------------------------------------------------------------------
@@ -920,6 +923,7 @@ impl fmt::Debug for Cpuid {
     }
 }
 
+/// A string wrapper around a byte array.
 #[derive(Clone, Eq, PartialEq)]
 #[repr(C)]
 pub struct FixedString<const N: usize>(pub [u8; N]);
@@ -928,7 +932,6 @@ impl<const N: usize> fmt::Debug for FixedString<N> {
         write!(f, "{}", str::from_utf8(&self.0).unwrap())
     }
 }
-
 impl<const N: usize> Serialize for FixedString<N> {
     fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         Serialize::serialize(
@@ -938,7 +941,6 @@ impl<const N: usize> Serialize for FixedString<N> {
         )
     }
 }
-
 impl<'a, const N: usize> Deserialize<'a> for FixedString<N> {
     fn deserialize<D: serde::Deserializer<'a>>(des: D) -> Result<Self, D::Error> {
         let base = <&str>::deserialize(des)?;
