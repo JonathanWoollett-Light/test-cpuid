@@ -1,5 +1,12 @@
 # test-cpuid
 
+- `RawCpuid`: The low level structure for use with ffi.
+- `Cpuid`: The high level structure for general use.
+
+In the future we could use `RawCpuid` as a replacement for `kvm_bindings::CpuId` in rust-vmm. 
+At the moment we can simply do `RawCpuid::from(kvm_bindings_cpuid)` when we need to and following
+also convert into `Cpuid` (WIP `Cpuid::from(raw_cpuid)`) when we need to.
+
 Printing
 ```rust
 #[test]
