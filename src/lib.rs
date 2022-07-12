@@ -1923,6 +1923,8 @@ impl TryFrom<HashMap<&str, u8>> for Leaf0x8000_0008_SubLeaf0_Ecx {
 mod tests {
     use std::fs::read_to_string;
     use std::sync::Once;
+    use std::fs::File;
+    use std::io::Write;
 
     use simple_logger::SimpleLogger;
 
