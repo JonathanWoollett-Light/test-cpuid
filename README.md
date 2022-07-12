@@ -5,7 +5,7 @@
 
 In the future we could use `RawCpuid` as a replacement for `kvm_bindings::CpuId` in rust-vmm. 
 At the moment we can simply do `RawCpuid::from(kvm_bindings_cpuid)` when we need to.
-Following this we can also convert into `Cpuid` (WIP `Cpuid::from(raw_cpuid)`) when we need to.
+Following this we can also convert into `Cpuid` (`Cpuid::from(raw_cpuid)`) when we need to.
 
 Printing
 ```rust
@@ -64,34 +64,19 @@ cpuid: Cpuid {
 Saving and loading cpuid.
 ```rust
 #[test]
-fn save_load() {
-    SimpleLogger::new().init().unwrap();
-
-    assert_eq!(size_of::<Cpuid>(), 100);
-
-    // We load cpuid
+fn serialize_deserialzie() {
+    init_logger();
     let cpuid = Cpuid::new();
-    // println!("cpuid: {:#?}", cpuid);
+    println!("cpuid: {:#?}", cpuid);
+    let serialized = serde_json::to_string_pretty(&cpuid).unwrap();
+    let mut file = File::create("cpuid-x86_64.json").unwrap();
+    file.write_all(serialized.as_bytes()).unwrap();
+    drop(file);
 
-    // We transmute/reinterpret-cast it to an array of bytes
-    let bytes = unsafe { transmute::<_, [u8; 100]>(cpuid) };
-    println!("a: {:?}", bytes);
-
-    // We store these bytes in a binary file
-    let mut file = File::create("cpuid-x86_64").unwrap();
-    file.write_all(&bytes).unwrap();
-
-    // We get bytes at compile time
-    const cpuid_x86_64_bytes: &'static [u8; 100] = include_bytes!("../cpuid-x86_64");
-    println!("b: {:?}", cpuid_x86_64_bytes);
-
-    // We define a constant exhaustive template based off these bytes
-    const cpuid_x86_64_template: Cpuid =
-        unsafe { transmute::<[u8; 100], Cpuid>(*cpuid_x86_64_bytes) };
-
-    // Allowing us to package our cpuid template with our program with
-    // println!("cpuid_x86_64_template: {:#?}", cpuid_x86_64_template);
-    assert!(cpuid_x86_64_template.covers(&Cpuid::new()));
+    let reserialized = read_to_string("cpuid-x86_64.json").unwrap();
+    let deserialized: Cpuid = serde_json::from_str(&reserialized).unwrap();
+    println!("deserialized: {:#?}", deserialized);
+    assert_eq!(cpuid, deserialized);
 }
 ```
 Directly accessing registers

@@ -31,6 +31,15 @@ impl RawCpuid {
             count: 0,
         }
     }
+
+    /// Returns an entry for a given lead (function) and sub-leaf (index).
+    ///
+    /// Returning `None` if it is not present.
+    #[must_use]
+    pub fn get(&self, leaf: u32, sub_leaf: u32) -> Option<&RawCpuidEntry> {
+        self.iter()
+            .find(|entry| entry.function == leaf && entry.index == sub_leaf)
+    }
 }
 impl Index<usize> for RawCpuid {
     type Output = RawCpuidEntry;
@@ -84,6 +93,29 @@ pub struct RawCpuidEntry {
     pub edx: u32,
     padding: [u32; 3],
 }
+impl RawCpuidEntry {
+    #[must_use]
+    pub fn new(
+        function: u32,
+        index: u32,
+        flags: u32,
+        eax: u32,
+        ebx: u32,
+        ecx: u32,
+        edx: u32,
+    ) -> Self {
+        Self {
+            function,
+            index,
+            flags,
+            eax,
+            ebx,
+            ecx,
+            edx,
+            padding: Default::default(),
+        }
+    }
+}
 impl From<kvm_bindings::CpuId> for RawCpuid {
     fn from(value: kvm_bindings::CpuId) -> Self {
         // As cannot acquire ownership of the underlying slice, we clone it.
@@ -106,6 +138,13 @@ impl Into<kvm_bindings::CpuId> for RawCpuid {
         #[allow(clippy::transmute_ptr_to_ptr)]
         let kvm_bindings_slice = unsafe { std::mem::transmute(cpuid_slice) };
         kvm_bindings::CpuId::from_entries(kvm_bindings_slice).unwrap()
+    }
+}
+// // We can't implement a foreign trait on a foreign type.
+#[allow(clippy::from_over_into)]
+impl Into<(u32, u32, u32, u32)> for RawCpuidEntry {
+    fn into(self) -> (u32, u32, u32, u32) {
+        (self.eax, self.ebx, self.ecx, self.edx)
     }
 }
 

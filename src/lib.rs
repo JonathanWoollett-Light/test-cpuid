@@ -35,10 +35,7 @@
 
 use core::arch::x86_64::{CpuidResult, __cpuid, __cpuid_count};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Write;
 use std::mem::transmute;
-use std::path::Path;
 use std::{fmt, str};
 mod bitflags_util;
 
@@ -554,103 +551,14 @@ pub struct Cpuid {
     /// leaf 0x8000_001F
     #[serde(with = "p")]
     pub leaf0x8000_001F_cpuid_feature_bits: Leaf0x8000_001F_SubLeaf0_Eax,
-}
-impl Default for Cpuid {
-    fn default() -> Self {
-        Self {
-            leaf0x00_highest_function_parameter_an_manufacturer_id:
-                HighestFunctionParameterAndManufacturerID::new(),
-            leaf0x01_process_info_and_feature_bits: ProcessorInfoAndFeatureBits::new(),
-            leaf0x06_thermal_and_power_management: ThermalAndPowerManagement::new(),
-            leaf0x07_extended_features: ExtendedFeatures::new(),
-            leaf0x0d_cpuid_feature_bits: {
-                let CpuidResult {
-                    eax,
-                    ebx: _,
-                    ecx: _,
-                    edx: _,
-                } = unsafe { __cpuid_count(13, 1) };
-                Leaf0xD_SubLeaf1_Eax { bits: eax }
-            },
-            leaf0x12_cpuid_feature_bits: {
-                let CpuidResult {
-                    eax,
-                    ebx: _,
-                    ecx: _,
-                    edx: _,
-                } = unsafe { __cpuid_count(18, 0) };
-                Leaf0x12_SubLeaf0_Eax { bits: eax }
-            },
-            leaf0x14_cpuid_feature_bits: {
-                let CpuidResult {
-                    eax: _,
-                    ebx,
-                    ecx: _,
-                    edx: _,
-                } = unsafe { __cpuid_count(20, 0) };
-                Leaf0x14_SubLeaf0_Ebx { bits: ebx }
-            },
-            leaf0x19_cpuid_feature_bits: {
-                let CpuidResult {
-                    eax: _,
-                    ebx,
-                    ecx: _,
-                    edx: _,
-                } = unsafe { __cpuid_count(25, 0) };
-                Leaf0x19_SubLeaf0_Ebx { bits: ebx }
-            },
-            leaf0x8000_0001_highest_function_parameter_an_manufacturer_id: {
-                let CpuidResult {
-                    eax: _,
-                    ebx: _,
-                    ecx,
-                    edx,
-                } = unsafe { __cpuid_count(0x8000_0001, 0) };
-                ExtendedProcessorInfoAndFeatureBits {
-                    edx: Leaf0x8000_0001_SubLeaf0_Edx { bits: edx },
-                    ecx: Leaf0x8000_0001_SubLeaf0_Ecx { bits: ecx },
-                }
-            },
-            leaf0x8000_0008_virtual_and_physical_address_sizes: {
-                let CpuidResult {
-                    eax,
-                    ebx,
-                    ecx,
-                    edx: _,
-                } = unsafe { __cpuid_count(0x8000_0008, 0) };
-                VirtualAndPhysicalAddressSizes {
-                    eax: Leaf0x8000_0008_SubLeaf0_Eax(eax),
-                    ebx: Leaf0x8000_0008_SubLeaf0_Ebx { bits: ebx },
-                    ecx: Leaf0x8000_0008_SubLeaf0_Ecx(ecx),
-                }
-            },
-            leaf0x8000_001F_cpuid_feature_bits: {
-                let CpuidResult {
-                    eax,
-                    ebx: _,
-                    ecx: _,
-                    edx: _,
-                } = unsafe { __cpuid_count(0x8000_0008, 0) };
-                Leaf0x8000_001F_SubLeaf0_Eax { bits: eax }
-            },
-        }
-    }
+    /// For compatibility with [`RawCpuid`], for leafs we do not explicitly describe we store them
+    /// here in the format `<(leaf,subleaf),(eax,ebx,ecx,edx)>`.
+    pub misc: HashMap<(u32, u32), (u32, u32, u32, u32)>,
 }
 impl Cpuid {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Saves `self` to a binary file
-    ///
-    /// # Errors
-    ///
-    /// On `File::create(path)?`.
-    pub fn save<P: AsRef<Path>>(self, path: P) -> std::io::Result<()> {
-        let bytes = unsafe { transmute::<_, [u8; 100]>(self) };
-        let mut file = File::create(path)?;
-        file.write_all(&bytes)
     }
 
     // If the feature set of `self` covers the feature set of `other`.
@@ -698,6 +606,69 @@ impl Cpuid {
         Cpuid: Leaf<N>,
     {
         <Cpuid as Leaf<N>>::leaf(self)
+    }
+}
+
+impl Default for Cpuid {
+    fn default() -> Self {
+        Self {
+            leaf0x00_highest_function_parameter_an_manufacturer_id:
+                HighestFunctionParameterAndManufacturerID::new(),
+            leaf0x01_process_info_and_feature_bits: ProcessorInfoAndFeatureBits::new(),
+            leaf0x06_thermal_and_power_management: ThermalAndPowerManagement::new(),
+            leaf0x07_extended_features: ExtendedFeatures::new(),
+            leaf0x0d_cpuid_feature_bits: {
+                let CpuidResult { eax, .. } = unsafe { __cpuid_count(13, 1) };
+                Leaf0xD_SubLeaf1_Eax { bits: eax }
+            },
+            leaf0x12_cpuid_feature_bits: {
+                let CpuidResult {
+                    eax,
+                    ebx: _,
+                    ecx: _,
+                    edx: _,
+                } = unsafe { __cpuid_count(18, 0) };
+                Leaf0x12_SubLeaf0_Eax { bits: eax }
+            },
+            leaf0x14_cpuid_feature_bits: {
+                let CpuidResult {
+                    eax: _,
+                    ebx,
+                    ecx: _,
+                    edx: _,
+                } = unsafe { __cpuid_count(20, 0) };
+                Leaf0x14_SubLeaf0_Ebx { bits: ebx }
+            },
+            leaf0x19_cpuid_feature_bits: {
+                let CpuidResult {
+                    eax: _,
+                    ebx,
+                    ecx: _,
+                    edx: _,
+                } = unsafe { __cpuid_count(25, 0) };
+                Leaf0x19_SubLeaf0_Ebx { bits: ebx }
+            },
+            leaf0x8000_0001_highest_function_parameter_an_manufacturer_id: {
+                let CpuidResult { ecx, edx, .. } = unsafe { __cpuid_count(0x8000_0001, 0) };
+                ExtendedProcessorInfoAndFeatureBits {
+                    edx: Leaf0x8000_0001_SubLeaf0_Edx { bits: edx },
+                    ecx: Leaf0x8000_0001_SubLeaf0_Ecx { bits: ecx },
+                }
+            },
+            leaf0x8000_0008_virtual_and_physical_address_sizes: {
+                let CpuidResult { eax, ebx, ecx, .. } = unsafe { __cpuid_count(0x8000_0008, 0) };
+                VirtualAndPhysicalAddressSizes {
+                    eax: Leaf0x8000_0008_SubLeaf0_Eax(eax),
+                    ebx: Leaf0x8000_0008_SubLeaf0_Ebx { bits: ebx },
+                    ecx: Leaf0x8000_0008_SubLeaf0_Ecx(ecx),
+                }
+            },
+            leaf0x8000_001F_cpuid_feature_bits: {
+                let CpuidResult { eax, .. } = unsafe { __cpuid_count(0x8000_001F, 0) };
+                Leaf0x8000_001F_SubLeaf0_Eax { bits: eax }
+            },
+            misc: HashMap::new(),
+        }
     }
 }
 
@@ -922,6 +893,91 @@ impl fmt::Debug for Cpuid {
             .finish()
     }
 }
+impl TryFrom<RawCpuid> for Cpuid {
+    // TODO Change this to at least `'static str` and use descriptions.
+    type Error = ();
+
+    fn try_from(cpuid: RawCpuid) -> Result<Self, Self::Error> {
+        Ok(Self {
+            leaf0x00_highest_function_parameter_an_manufacturer_id:
+                HighestFunctionParameterAndManufacturerID::from(cpuid.get(0, 0).ok_or(())?.clone()),
+            leaf0x01_process_info_and_feature_bits: ProcessorInfoAndFeatureBits::from(
+                cpuid.get(1, 0).ok_or(())?.clone(),
+            ),
+            leaf0x06_thermal_and_power_management: ThermalAndPowerManagement::from(
+                cpuid.get(6, 0).ok_or(())?.clone(),
+            ),
+            leaf0x07_extended_features: ExtendedFeatures::from((
+                cpuid.get(7, 0).ok_or(())?.clone(),
+                cpuid.get(7, 1).ok_or(())?.clone(),
+            )),
+            leaf0x0d_cpuid_feature_bits: {
+                let RawCpuidEntry { eax, .. } = cpuid.get(13, 1).ok_or(())?;
+                Leaf0xD_SubLeaf1_Eax { bits: *eax }
+            },
+            leaf0x12_cpuid_feature_bits: {
+                let RawCpuidEntry { eax, .. } = cpuid.get(18, 0).ok_or(())?;
+                Leaf0x12_SubLeaf0_Eax { bits: *eax }
+            },
+            leaf0x14_cpuid_feature_bits: {
+                let RawCpuidEntry { ebx, .. } = cpuid.get(20, 0).ok_or(())?;
+                Leaf0x14_SubLeaf0_Ebx { bits: *ebx }
+            },
+            leaf0x19_cpuid_feature_bits: {
+                let RawCpuidEntry { ebx, .. } = cpuid.get(25, 0).ok_or(())?;
+                Leaf0x19_SubLeaf0_Ebx { bits: *ebx }
+            },
+            leaf0x8000_0001_highest_function_parameter_an_manufacturer_id: {
+                let RawCpuidEntry { ecx, edx, .. } = cpuid.get(0x8000_0001, 0).ok_or(())?;
+                ExtendedProcessorInfoAndFeatureBits {
+                    edx: Leaf0x8000_0001_SubLeaf0_Edx { bits: *edx },
+                    ecx: Leaf0x8000_0001_SubLeaf0_Ecx { bits: *ecx },
+                }
+            },
+            leaf0x8000_0008_virtual_and_physical_address_sizes: {
+                let RawCpuidEntry { eax, ebx, ecx, .. } = cpuid.get(0x8000_0008, 0).ok_or(())?;
+                VirtualAndPhysicalAddressSizes {
+                    eax: Leaf0x8000_0008_SubLeaf0_Eax(*eax),
+                    ebx: Leaf0x8000_0008_SubLeaf0_Ebx { bits: *ebx },
+                    ecx: Leaf0x8000_0008_SubLeaf0_Ecx(*ecx),
+                }
+            },
+            leaf0x8000_001F_cpuid_feature_bits: {
+                let RawCpuidEntry { eax, .. } = cpuid.get(0x8000_001F, 0).ok_or(())?;
+                Leaf0x8000_001F_SubLeaf0_Eax { bits: *eax }
+            },
+            misc: {
+                // Filter out entries we already store explicitly
+                #[allow(clippy::unnested_or_patterns)]
+                cpuid
+                    .iter()
+                    .filter(|entry| {
+                        !matches!(
+                            (entry.function, entry.index),
+                            (0, 0)
+                                | (1, 0)
+                                | (6, 0)
+                                | (7, 0)
+                                | (13, 1)
+                                | (18, 0)
+                                | (20, 0)
+                                | (25, 0)
+                                | (0x8000_0001, 0)
+                                | (0x8000_0008, 0)
+                                | (0x8000_001F, 0)
+                        )
+                    })
+                    .map(|entry| {
+                        (
+                            (entry.function, entry.index),
+                            (entry.eax, entry.ebx, entry.ecx, entry.edx),
+                        )
+                    })
+                    .collect()
+            },
+        })
+    }
+}
 
 /// A string wrapper around a byte array.
 #[derive(Clone, Eq, PartialEq)]
@@ -960,18 +1016,6 @@ pub struct HighestFunctionParameterAndManufacturerID {
     /// file more easily editable.
     pub manufacturer_id: FixedString<12>,
     pub highest_calling_parameter: u32,
-}
-impl Default for HighestFunctionParameterAndManufacturerID {
-    fn default() -> Self {
-        let CpuidResult { eax, ebx, ecx, edx } = unsafe { __cpuid(0) };
-        let (ebx_bytes, edx_bytes, ecx_bytes) =
-            (ebx.to_ne_bytes(), edx.to_ne_bytes(), ecx.to_ne_bytes());
-        let vec = [ebx_bytes, edx_bytes, ecx_bytes].concat();
-        Self {
-            manufacturer_id: FixedString(unsafe { vec.try_into().unwrap_unchecked() }),
-            highest_calling_parameter: eax,
-        }
-    }
 }
 impl HighestFunctionParameterAndManufacturerID {
     /// # Panics
@@ -1040,6 +1084,32 @@ impl fmt::Debug for HighestFunctionParameterAndManufacturerID {
             .finish()
     }
 }
+impl Default for HighestFunctionParameterAndManufacturerID {
+    fn default() -> Self {
+        let CpuidResult { eax, ebx, ecx, edx } = unsafe { __cpuid(0) };
+        Self::from((eax, ebx, ecx, edx))
+    }
+}
+impl From<RawCpuidEntry> for HighestFunctionParameterAndManufacturerID {
+    fn from(entry: RawCpuidEntry) -> Self {
+        let RawCpuidEntry {
+            eax, ebx, ecx, edx, ..
+        } = entry;
+        Self::from((eax, ebx, ecx, edx))
+    }
+}
+/// From `(eax,ebx,ecx,edx)`.
+impl From<(u32, u32, u32, u32)> for HighestFunctionParameterAndManufacturerID {
+    fn from((eax, ebx, ecx, edx): (u32, u32, u32, u32)) -> Self {
+        let (ebx_bytes, edx_bytes, ecx_bytes) =
+            (ebx.to_ne_bytes(), edx.to_ne_bytes(), ecx.to_ne_bytes());
+        let vec = [ebx_bytes, edx_bytes, ecx_bytes].concat();
+        Self {
+            manufacturer_id: FixedString(unsafe { vec.try_into().unwrap_unchecked() }),
+            highest_calling_parameter: eax,
+        }
+    }
+}
 
 /// <https://en.wikipedia.org/wiki/CPUID#EAX=1:_Processor_Info_and_Feature_Bits>
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -1053,6 +1123,20 @@ pub struct ProcessorInfoAndFeatureBits {
 impl Default for ProcessorInfoAndFeatureBits {
     fn default() -> Self {
         let CpuidResult { eax, ebx, ecx, edx } = unsafe { __cpuid_count(1, 0) };
+        Self::from((eax, ebx, ecx, edx))
+    }
+}
+impl From<RawCpuidEntry> for ProcessorInfoAndFeatureBits {
+    fn from(entry: RawCpuidEntry) -> Self {
+        let RawCpuidEntry {
+            eax, ebx, ecx, edx, ..
+        } = entry;
+        Self::from((eax, ebx, ecx, edx))
+    }
+}
+/// From `(eax,ebx,ecx,edx)`.
+impl From<(u32, u32, u32, u32)> for ProcessorInfoAndFeatureBits {
+    fn from((eax, ebx, ecx, edx): (u32, u32, u32, u32)) -> Self {
         Self {
             processor_version_information: ProcessorVersionInformation(eax),
             additional_information: unsafe { transmute::<_, AdditionalInformation>(ebx) },
@@ -1316,23 +1400,6 @@ pub struct ThermalAndPowerManagement {
     pub features: ThermalAndPowerManagementFeatures,
     pub number_of_interrupt_thresholds: Leaf6SubLeaf0Ebx,
 }
-impl Default for ThermalAndPowerManagement {
-    fn default() -> Self {
-        let CpuidResult {
-            eax,
-            ebx,
-            ecx,
-            edx: _,
-        } = unsafe { __cpuid_count(6, 0) };
-        Self {
-            features: ThermalAndPowerManagementFeatures {
-                eax: Leaf0x6_SubLeaf0_Eax { bits: eax },
-                ecx: Leaf0x6_SubLeaf0_Ecx { bits: ecx },
-            },
-            number_of_interrupt_thresholds: Leaf6SubLeaf0Ebx(ebx),
-        }
-    }
-}
 impl ThermalAndPowerManagement {
     #[must_use]
     pub fn new() -> Self {
@@ -1371,6 +1438,33 @@ impl ThermalAndPowerManagement {
         <Self as SubLeaf<N>>::sub_leaf(self)
     }
 }
+impl Default for ThermalAndPowerManagement {
+    fn default() -> Self {
+        let CpuidResult { eax, ebx, ecx, edx } = unsafe { __cpuid_count(6, 0) };
+        Self::from((eax, ebx, ecx, edx))
+    }
+}
+impl From<RawCpuidEntry> for ThermalAndPowerManagement {
+    fn from(entry: RawCpuidEntry) -> Self {
+        let RawCpuidEntry {
+            eax, ebx, ecx, edx, ..
+        } = entry;
+        Self::from((eax, ebx, ecx, edx))
+    }
+}
+/// From `(eax,ebx,ecx,edx)`.
+impl From<(u32, u32, u32, u32)> for ThermalAndPowerManagement {
+    fn from((eax, ebx, ecx, _edx): (u32, u32, u32, u32)) -> Self {
+        Self {
+            features: ThermalAndPowerManagementFeatures {
+                eax: Leaf0x6_SubLeaf0_Eax { bits: eax },
+                ecx: Leaf0x6_SubLeaf0_Ecx { bits: ecx },
+            },
+            number_of_interrupt_thresholds: Leaf6SubLeaf0Ebx(ebx),
+        }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ThermalAndPowerManagementFeatures {
@@ -1423,30 +1517,6 @@ pub struct ExtendedFeatures {
     #[serde(with = "h")]
     pub sub_leaf1: Leaf0x7_SubLeaf1_Eax,
 }
-impl Default for ExtendedFeatures {
-    fn default() -> Self {
-        let CpuidResult {
-            eax: _,
-            ebx: ebx0,
-            ecx: ecx0,
-            edx: edx0,
-        } = unsafe { __cpuid_count(7, 0) };
-        let CpuidResult {
-            eax: eax1,
-            ebx: _,
-            ecx: _,
-            edx: _,
-        } = unsafe { __cpuid_count(7, 1) };
-        Self {
-            sub_leaf0: ExtendedFeaturesSubLeaf0 {
-                ebx: Leaf0x7_SubLeaf0_Ebx { bits: ebx0 },
-                ecx: Leaf0x7_SubLeaf0_Ecx { bits: ecx0 },
-                edx: Leaf0x7_SubLeaf0_Edx { bits: edx0 },
-            },
-            sub_leaf1: Leaf0x7_SubLeaf1_Eax { bits: eax1 },
-        }
-    }
-}
 impl ExtendedFeatures {
     #[must_use]
     pub fn new() -> Self {
@@ -1465,6 +1535,60 @@ impl ExtendedFeatures {
         Self: SubLeaf<N>,
     {
         <Self as SubLeaf<N>>::sub_leaf(self)
+    }
+}
+impl Default for ExtendedFeatures {
+    fn default() -> Self {
+        let CpuidResult {
+            eax: eax0,
+            ebx: ebx0,
+            ecx: ecx0,
+            edx: edx0,
+        } = unsafe { __cpuid_count(7, 0) };
+        let CpuidResult {
+            eax: eax1,
+            ebx: ebx1,
+            ecx: ecx1,
+            edx: edx1,
+        } = unsafe { __cpuid_count(7, 1) };
+        Self::from(((eax0, ebx0, ecx0, edx0), (eax1, ebx1, ecx1, edx1)))
+    }
+}
+impl From<(RawCpuidEntry, RawCpuidEntry)> for ExtendedFeatures {
+    fn from((one, two): (RawCpuidEntry, RawCpuidEntry)) -> Self {
+        let RawCpuidEntry {
+            eax: eax0,
+            ebx: ebx0,
+            ecx: ecx0,
+            edx: edx0,
+            ..
+        } = one;
+        let RawCpuidEntry {
+            eax: eax1,
+            ebx: ebx1,
+            ecx: ecx1,
+            edx: edx1,
+            ..
+        } = two;
+        Self::from(((eax0, ebx0, ecx0, edx0), (eax1, ebx1, ecx1, edx1)))
+    }
+}
+/// From `(eax,ebx,ecx,edx)`.
+impl From<((u32, u32, u32, u32), (u32, u32, u32, u32))> for ExtendedFeatures {
+    fn from(
+        ((_eax0, ebx0, ecx0, edx0), (eax1, _ebx1, _ecx1, _edx1)): (
+            (u32, u32, u32, u32),
+            (u32, u32, u32, u32),
+        ),
+    ) -> Self {
+        Self {
+            sub_leaf0: ExtendedFeaturesSubLeaf0 {
+                ebx: Leaf0x7_SubLeaf0_Ebx { bits: ebx0 },
+                ecx: Leaf0x7_SubLeaf0_Ecx { bits: ecx0 },
+                edx: Leaf0x7_SubLeaf0_Edx { bits: edx0 },
+            },
+            sub_leaf1: Leaf0x7_SubLeaf1_Eax { bits: eax1 },
+        }
     }
 }
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -1795,7 +1919,6 @@ impl TryFrom<HashMap<&str, u8>> for Leaf0x8000_0008_SubLeaf0_Ecx {
         Ok(base)
     }
 }
-
 #[cfg(test)]
 mod tests {
     use std::fs::read_to_string;
@@ -1818,23 +1941,6 @@ mod tests {
         init_logger();
         let cpuid = Cpuid::new();
         println!("cpuid: {:#?}", cpuid);
-    }
-    #[test]
-    fn save_load() {
-        init_logger();
-        let cpuid = Cpuid::new();
-        println!("cpuid: {:#?}", cpuid);
-        // Saves to binary file
-        cpuid.clone().save("cpuid-x86_64").unwrap();
-
-        // TODO Add `const fn load`
-        // Loads at compile time
-        const CPUID: Cpuid =
-            unsafe { transmute::<[u8; 100], Cpuid>(*include_bytes!("../cpuid-x86_64")) };
-        println!("CPUID: {:#?}", CPUID);
-        // Since `CPUID` is the previous version of `cpuid` they may differ in `local_apic_id`, thus
-        // we cannot assert equal.
-        assert!(CPUID.covers(&cpuid));
     }
     #[test]
     fn serialize_deserialzie() {
