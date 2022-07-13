@@ -551,8 +551,8 @@ pub struct Cpuid {
     /// leaf 0x8000_001F
     #[serde(with = "p")]
     pub leaf0x8000_001F_cpuid_feature_bits: Leaf0x8000_001F_SubLeaf0_Eax,
-    /// For compatibility with [`RawCpuid`], for leafs we do not explicitly describe we store them
-    /// here in the format `<(leaf,subleaf),(eax,ebx,ecx,edx)>`.
+    /// To allow usability beyond what is immediately considered at the moment, for leafs we do not 
+    /// explicitly describe we store them here in the format `<(leaf,subleaf),(eax,ebx,ecx,edx)>`.
     pub misc: HashMap<(u32, u32), (u32, u32, u32, u32)>,
 }
 impl Cpuid {
@@ -721,6 +721,7 @@ impl fmt::Debug for Cpuid {
             .finish()
     }
 }
+/// This conversion is lossy, this means we cannot implement `From<Cpuid> for RawCpuid`
 impl TryFrom<RawCpuid> for Cpuid {
     // TODO Change this to at least `'static str` and use descriptions.
     type Error = ();
