@@ -81,7 +81,7 @@ impl<'a> Iterator for RawCpuidIter<'a> {
         rtn
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[repr(C)]
 pub struct RawCpuidEntry {
     pub function: u32,
