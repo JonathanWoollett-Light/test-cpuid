@@ -7,6 +7,11 @@ In the future we could use `RawCpuid` as a replacement for `kvm_bindings::CpuId`
 At the moment we can simply do `RawCpuid::from(kvm_bindings_cpuid)` when we need to.
 Following this we can also convert into `Cpuid` (`Cpuid::from(raw_cpuid)`) when we need to.
 
+For providing a template, one could provide a `.json` which deserializes to `Cpuid` which can then
+be converted to `RawCpuid` which can be used to set the cpu cpuid. Without a `Cpuid` which fully 
+describes the specification we would need to do some combination with already present features to 
+fully form `RawCpuid`.
+
 Printing
 ```rust
 #[test]
