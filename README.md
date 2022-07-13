@@ -12,6 +12,12 @@ be converted to `RawCpuid` which can be used to set the cpu cpuid. Without a `Cp
 describes the specification we would need to do some combination with already present features to 
 fully form `RawCpuid`.
 
+`Cpuid` could be brought up to date to cover the full AMD and Intel specifications for cpuid, this
+while functionally the best approach is considerable work and would require updating to ensure it
+matches the most recent specifications such that Firecracker doesn't become incompatible (or rather 
+in this case non-fully compatible) with new hardware. Without this, we will always need to set the
+cpuid in the vm by combining our given template with the result of `GET_SUPPORTED_CPUID`.
+
 Printing
 ```rust
 #[test]
