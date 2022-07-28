@@ -1,3 +1,5 @@
+*Moved to https://github.com/JonathanWoollett-Light/cpuid-workspace*
+
 # test-cpuid
 
 - `RawCpuid`: The low level structure for use with ffi.
